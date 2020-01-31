@@ -1,0 +1,128 @@
+---
+title: "data_challenge"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(tidycensus)
+library(sf)
+
+library(tigris)
+
+library(stringr)
+library(censusapi)
+library(ggthemes)
+library(leaflet)
+library(janitor)
+library(mapview)
+```
+
+
+```{r}
+# 19v1
+data <- read_csv("C:/Users/aslop/Desktop/Data challenge/PLUTO subset CUNY data challenge - pluto_datachallenge_subset.csv")
+glimpse(data)
+```
+
+```{r}
+head(data)
+
+```
+
+Using the above PLUTO data and the software of your choice, create a map illustrating
+the number residential units for lots where the assessed total value is $1,000,000 or
+more. If you create a static map, please deliver your map as a pdf; however, if you
+create a web map please provide the link to your map in the answers.pdf file.
+
+```{r}
+# unitsres - The sum of residential units in all buildings on the tax lot.
+# assesstot - The assessed total value for the tax lot
+
+# filter lots with total value greater $1,000,000, create id
+
+data_1 <- data %>% 
+ filter(assesstot >= 1000000)%>%  
+ select(unitsres, assesstot, bbl) 
+
+```
+
+```{r}
+# download PLUTO shapefile
+pluto_geo <- read_sf("C:/Users/aslop/Desktop/Data challenge/nyc_mappluto_19v1_arc_shp/MapPLUTO.shp")
+
+pluto_geo_1 <- pluto_geo %>% 
+ select(geometry, BBL)
+```
+
+```{r}
+joined <- data_1 %>% 
+  left_join(pluto_geo_1, by = c("bbl" = "BBL")) %>% 
+  st_sf(crs = 2263)
+
+class(joined)
+
+st_crs(joined)
+```
+
+```{r}
+# nyc community districts
+cd <- read_sf("C:/Users/aslop/Desktop/Data challenge/nycd_19d/nycd_19d/nycd.shp")
+
+cd_1 <- cd %>% 
+  st_sf(crs = 2263)
+
+st_crs(cd_1)
+```
+
+
+```{r}
+joined_2 <- st_transform(joined, "+proj=longlat +ellps=WGS84 +datum=WGS84")
+
+pal <- colorNumeric(palette = "Blues", domain = c(min(joined_2$unitsres), max(joined_2$unitsres)), na.color = "grey")
+
+
+popup <- paste(sep = "<br/>", 
+               paste0("<b>Residential units: </b>", joined_2$unitsres), 
+               paste0("<b>Lot total value: </b>", joined_2$assesstot))
+
+
+leaflet(joined_2, options = 
+            leafletOptions(dragging = FALSE,
+                           minZoom = 10, 
+                           maxZoom = 15)) %>%
+addProviderTiles("CartoDB.Positron") %>%
+addPolygons(group = "continuous",
+            stroke = TRUE, 
+            smoothFactor = 0.5, 
+            fillOpacity = 1,
+            weight = 0.5,
+            fillColor = ~pal(unitsres),
+            popup = popup) %>% 
+addLegend(position = "topleft", pal = pal, values = joined_2$unitsres,
+          title = "Residential units",
+          opacity = 0.6) 
+```
+
+3. Which record is the largest tax lot? How many buildings are on this tax lot? 
+
+```{r}
+data %>% select(lotarea, bbl, numbldgs) %>% 
+  arrange(desc(lotarea))
+```
+
+4. How many unique building classes are in this dataset? 
+
+```{r}
+data %>% select(bldgclass) %>% unique() %>% count()
+```
+
+5. What is the most frequent land use type? 
+
+```{r}
+data %>% select(landuse) %>% 
+  mutate(num = 1) %>%  
+  group_by(landuse) %>% 
+  summarise(sum = sum(num))
+```
+
